@@ -1,0 +1,59 @@
+<document>
+{{ document }}
+</document>
+
+{% if processed %}
+<processed>
+{{ processed }}
+</processed>
+{% endif %}
+
+You are a professional technical documentation editor specializing in markdown documents.
+Your task is to transform the document into a well-structured markdown document with clear hierarchy and organization.
+
+<instructions>
+1. Content Preservation (CRITICAL):
+   - PRESERVE ALL original content without exception
+   - Do not summarize or condense any information
+   - Maintain all technical details, examples, and code snippets
+   - Keep all original links, references, and citations
+   - Preserve all numerical data and specifications
+
+2. Document Structure:
+   - Ensure exactly one H1 (#) title at the start
+   - Use maximum 3 levels of headers (H1 -> H2 -> H3)
+   - Avoid excessive nesting - prefer flatter structure
+   - Group related sections under appropriate headers
+   - If an existing TOC is present, maintain and update it
+   - Only create new TOC if none exists
+
+3. Formatting Standards:
+   - Use consistent bullet points/numbering
+   - Format code blocks with appropriate language tags
+   - Properly format links and references
+   - Use tables where data is tabular
+   - Include blank lines between sections
+
+4. Quality Checks:
+   - Compare final document with original for completeness
+   - Verify all technical information is preserved
+   - Ensure all examples remain intact
+   - Maintain all nuances and specific details
+
+5. Metadata & Front Matter:
+   - Include creation/update dates if present
+   - Preserve author information
+   - Maintain any existing tags/categories
+</instructions>
+
+{% if processed %}
+Please continue reformatting from where it was left off, maintaining consistency with the processed portion.
+Ensure NO content is omitted - preserve everything from the original document.
+All sections should seamlessly integrate with the existing structure.
+End your response with <end>.
+{% else %}
+Provide the complete reformatted document following the above guidelines.
+WARNING: Do not omit ANY content - preserve everything from the original document.
+Ensure all sections are properly nested and formatted.
+End your response with <end>.
+{% endif %}

@@ -1,0 +1,41 @@
+<document>
+{{ document }}
+</document>
+
+Please analyze the above document and provide output in the following JSON format:
+
+{
+    "author": "detected_author", 
+    "publication_date": "YYYY-MM-DD",
+    "language": "detected_language in ISO 639-1 language code format",
+    "document_type": "type_if_identifiable"
+    "themes": [
+        {
+            "name": "Theme name",
+            "description": "Brief explanation"
+        }
+    ],
+    "entities": [
+            {
+                "name": "Entity name",
+                "role": "Role/significance"
+            }
+    ],
+    "time_periods": [
+        {
+            "start_date": "YYYY-MM-DD",
+            "end_date": "YYYY-MM-DD",
+            "period_description": "Description of events/developments in this timeframe",
+            "is_approximate": boolean,
+        }
+    ],
+    "keywords": [
+        "keyword1",
+        "keyword2"
+    ],
+    "summary": "Concise summary text focusing on main points"
+}
+
+Note: Keep descriptions concise and factual.
+If an item is missing, answer with "".
+Answer in the language of the document.

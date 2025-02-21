@@ -1,0 +1,23 @@
+<toc>
+{{ toc }}
+</toc>
+
+Generate a standardized table of contents following these rules:
+
+1. FORMAT REQUIREMENTS
+- Each entry: "# {Title} (Page {n})"
+- Page numbers must be integers in parentheses
+- One entry per line, no blank lines
+- Preserve original markdown formatting in titles
+- Page numbers ascending order
+
+2. VALIDATION
+- Reject duplicate page numbers
+- Reject duplicate titles
+- Page numbers must exist and be > 0
+- Title cannot be empty
+
+Example valid output:
+# Executive Summary (Page 1)
+# Market Analysis (Page 3)
+# Financial Projections (Page 7)

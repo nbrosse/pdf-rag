@@ -1,0 +1,22 @@
+<doc>
+{{ doc }}
+</doc>
+
+{% if format == 'landscape' %}
+Extract the table of contents (TOC) from the document if present and specify the page number where the table of contents is located.
+The table of contents, if it exists, is located on a single page.
+Note that each page in the document ends with a marker '--- end page n' where n is the page number.
+
+Output format:
+- If a table of contents exists:
+  First line: "Table of contents found on page X"
+  Following lines: Complete TOC with its original structure and hierarchy
+- If no table of contents exists: Respond with exactly "<none>"
+{% else %}
+Extract the table of contents (TOC) from the document if it exists.
+IMPORTANT: the table of contents must be contained in consecutive lines in the source document itself.
+
+Output format:
+- If a table of contents exists: complete TOC with its original structure and hierarchy
+- If no table of contents exists: Respond with exactly "<none>"
+{% endif %}
