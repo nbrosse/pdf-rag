@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import tiktoken
-from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage
+from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, QueryBundle
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.ingestion import DocstoreStrategy, IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
@@ -19,6 +19,7 @@ from llama_index.core.postprocessor import PrevNextNodePostprocessor
 
 
 from pdf_rag.markdown_parsers import MarkdownPageNodeParser
+from pdf_rag.node_postprocessors import FullPagePostprocessor
 from pdf_rag.readers import VLMPDFReader
 from google import genai
 
@@ -110,6 +111,9 @@ shell_2022_report_path = shell_dir_path / "shell-annual-report-2022.pdf"
 small_shell_2023_report_path = small_data_dir_path / "shell-annual-report-2023-1-20.pdf"
 cache_dir = opio_dir_path / "cache"
 
+doc_path_1 = shell_dir_path / "CMD23-non-gaap-reconciliation.pdf"
+doc_path_2 = shell_dir_path / "shell-ets24-print.pdf"
+
 queries = [
     "what is the cash position of Shell at the end of 2023 ?",
     "Detail Shell current financing arrangements and the terms associated with them",
@@ -122,11 +126,16 @@ queries = [
 query = queries[1]
 
 vlm_reader = VLMPDFReader(cache_dir=cache_dir, num_workers=32)
-document = vlm_reader.load_data(shell_2023_report_path)
+documents = vlm_reader.load_data([doc_path_1, doc_path_2])
+
+
+
 markdown_parser = MarkdownPageNodeParser()
 nodes = markdown_parser.get_nodes_from_documents(documents=document)
 sentence_splitter = SentenceSplitter(chunk_size=1024)
 nodes = sentence_splitter(nodes)
+
+# split_nodes = sentence_splitter([nodes[7]])
 
 storage_context_persist_dir = opio_dir_path / "2023_shell_storage"
 
@@ -172,21 +181,29 @@ retriever = index.as_retriever(
     vector_store_query_mode=VectorStoreQueryMode.DEFAULT,
 )
 
+# docstore = index.docstore
 
-postprocessor = PrevNextNodePostprocessor(
+full_page_postprocessor = FullPagePostprocessor(
     docstore=index.docstore,
-    num_nodes=1,  # number of nodes to fetch when looking forawrds or backwards
-    mode="both",  # can be either 'next', 'previous', or 'both'
 )
 
+# postprocessor = PrevNextNodePostprocessor(
+#     docstore=index.docstore,
+#     num_nodes=1,  # number of nodes to fetch when looking forawrds or backwards
+#     mode="both",  # can be either 'next', 'previous', or 'both'
+# )
+#
 query_engine = RetrieverQueryEngine(
     retriever=retriever,
-    node_postprocessors=[postprocessor],
+    node_postprocessors=[full_page_postprocessor],
 )
 
-response = query_engine.query("How many employees does Shell have in France in 2023 ?")
 
-selected_notes = [n for n in nodes if n.metadata["page_number"] == 34]
+# retrieved_nodes = query_engine.retrieve(QueryBundle(query))
+# response = query_engine.query(query)
+
+#
+# selected_notes = [n for n in nodes if n.metadata["page_number"] == 34]
 # content = "\n\n ------------- \n\n".join([n.text for n in selected_notes])
 # target_emb = client.models.embed_content(model="text-embedding-004", contents=target_str).embeddings[0].values
 # query_emb = client.models.embed_content(model="text-embedding-004", contents=queries[2]).embeddings[0].values
@@ -196,20 +213,20 @@ selected_notes = [n for n in nodes if n.metadata["page_number"] == 34]
 
 # response = query_engine.query(queries[2])
 
-# for i, query in enumerate(queries):
-#     output = list()
-#     retrieved_nodes = retriever.retrieve(query)
-#     response = query_engine.query(query)
-#     output.append(query)
-#     output.append(str(response))
-#     for node in retrieved_nodes:
-#         output.append("-------------------------------------------------")
-#         output.append(str(node.score))
-#         output.append(str(node.metadata["page_number"]))
-#         output.append(node.text)
-#     output_content = "\n".join(output)
-#     output_file = opio_dir_path / "outputs" / f"output_{i}.md"
-#     output_file.write_text(output_content)
+for i, query in enumerate(queries):
+    output = list()
+    retrieved_nodes = query_engine.retrieve(QueryBundle(query))
+    response = query_engine.query(query)
+    output.append(query)
+    output.append(str(response))
+    for node in retrieved_nodes:
+        output.append("-------------------------------------------------")
+        output.append(str(node.score))
+        output.append(str(node.metadata["page_number"]))
+        output.append(node.text)
+    output_content = "\n".join(output)
+    output_file = opio_dir_path / "outputs_v2" / f"output_{i}.md"
+    output_file.write_text(output_content)
 
 
 

@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 nest_asyncio_err = "cannot be called from a running event loop"
 nest_asyncio_msg = "The event loop is already running. Add `import nest_asyncio; nest_asyncio.apply()` to your code to fix this issue."
 
+FileInput = Path | str
+
 
 def _postprocess_markdown_output(response: str) -> str:
     pattern = r"```markdown\s*(.*?)(```|$)"
@@ -123,7 +125,7 @@ class VLMPDFReader(BasePydanticReader):
 
     def load_data(
         self,
-        file: Union[str, Path],
+        file: Union[List[FileInput], FileInput],
         extra_info: Optional[dict] = None
     ) -> List[Document]:
         """Load PDF data into Document objects."""
@@ -176,8 +178,6 @@ class VLMPDFReader(BasePydanticReader):
         )
         finish_reason = response.candidates[0].finish_reason
         match finish_reason:
-            case "STOP":
-                return response.text
             case "RECITATION":
                 messages = [
                     {
@@ -199,37 +199,38 @@ class VLMPDFReader(BasePydanticReader):
                     model=self.model_name_mistral,
                     messages=messages
                 )
-                # print(response.choices[0].message.content)
                 return response.choices[0].message.content
-            case _:
-                image.save(f"image_{page_num}.png")
-                print(response.text)
-                raise RuntimeError(f"Unknown finish reason: {finish_reason}")
+            case _:  # "STOP":
+                return response.text
+            # case _:
+            #     image.save(f"image_{page_num}.png")
+            #     print(response.text)
+            #     raise RuntimeError(f"Unknown finish reason: {finish_reason}")
 
-    async def aload_data(
+    async def _aload_data(
         self,
-        file: Union[str, Path],
-        extra_info: Optional[dict] = None
-    ) -> List[Document]:
-        file = Path(file)
-        if not file.exists():
-            raise FileNotFoundError(f"File {str(file)} does not exist")
-        if file.suffix != ".pdf":
-            raise ValueError(f"File {str(file)} is not a PDF")
+        file_path: FileInput,
+        extra_info: Optional[dict] = None,
+        show_progress: bool = False,
+    ) -> Document:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"File {str(file_path)} does not exist")
+        if file_path.suffix != ".pdf":
+            raise ValueError(f"File {str(file_path)} is not a PDF")
         if extra_info and "relative_path" in extra_info:
             relative_path = extra_info["relative_path"]
         else:
-            relative_path = file.name
+            relative_path = file_path.name
         output_file_path = self.cache_dir / f"{relative_path}.md"
-        reader = PdfReader(str(file))
+        reader = PdfReader(str(file_path))
         nb_pages = reader.get_num_pages()
-        metadata = {"nb_pages": nb_pages, "filename": file.name}
+        metadata = {"nb_pages": nb_pages, "filename": file_path.name}
         if extra_info:
             metadata.update(extra_info)
         if output_file_path.exists():
             content = output_file_path.read_text()
-            return [Document(text=content, metadata=metadata)]
-        # pages = [50, 108, 167, 184, 189]
+            return Document(text=content, metadata=metadata)
         jobs = [
             self._aload_page(
                 reader=reader,
@@ -240,15 +241,51 @@ class VLMPDFReader(BasePydanticReader):
             results = await run_jobs(
                 jobs,
                 workers=self.num_workers,
-                desc=f"Parsing file {file.name}",
-                show_progress=self.show_progress,
+                desc=f"Parsing file {file_path.name}",
+                show_progress=show_progress,
             )
             results = [_postprocess_markdown_output(r) for r in results]
             transcription = "".join([f"{r}\n\n--- end page {i + 1}\n\n" for i, r in enumerate(results)])
             output_file_path.write_text(transcription)
-            return [Document(text=transcription, metadata=metadata)]
+            return Document(text=transcription, metadata=metadata)
         except RuntimeError as e:
             if nest_asyncio_err in str(e):
                 raise RuntimeError(nest_asyncio_msg)
             else:
                 raise e
+
+    async def aload_data(
+        self,
+        file_path: Union[List[FileInput], FileInput],
+        extra_info: Optional[dict] = None,
+    ) -> List[Document]:
+        """Load data from the input path."""
+        if isinstance(file_path, (str, Path)):
+            doc = await self._aload_data(file_path, extra_info=extra_info, show_progress=self.show_progress)
+            return [doc]
+        elif isinstance(file_path, list):
+            jobs = [
+                self._aload_data(
+                    f,
+                    extra_info=extra_info,
+                    show_progress=False,
+                )
+                for f in file_path
+            ]
+            try:
+                results = await run_jobs(
+                    jobs,
+                    workers=self.num_workers,
+                    desc="Parsing files",
+                    show_progress=self.show_progress,
+                )
+                return results
+            except RuntimeError as e:
+                if nest_asyncio_err in str(e):
+                    raise RuntimeError(nest_asyncio_msg)
+                else:
+                    raise e
+        else:
+            raise ValueError(
+                "The input file_path must be a string or a list of strings."
+            )
