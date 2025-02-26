@@ -1,5 +1,6 @@
 import base64
 import logging
+import mimetypes
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, List, Union, Any
@@ -8,10 +9,13 @@ import re
 
 import tenacity
 from google.genai import Client, types
+from google.genai.errors import ServerError
+from jinja2 import Template
 from llama_index.core import Document
 from llama_index.core.async_utils import run_jobs, asyncio_run
 
 from llama_index.core.readers.base import BasePydanticReader
+from llama_index.core.readers.file.base import get_default_fs, _format_file_timestamp
 from mistralai import Mistral, SDKError
 from pdf2image import convert_from_bytes
 from pydantic import Field, field_validator, PrivateAttr
@@ -20,13 +24,15 @@ from google import genai
 from pypdf import PdfReader, PdfWriter
 
 from dotenv import load_dotenv
-from tenacity import wait_fixed, retry_if_exception_type
+from tenacity import wait_fixed, retry_if_exception_type, stop_after_attempt
 
 from pdf_rag.config import jinja2_env
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+WAIT_SECONDS: int = 5
 
 # Asyncio error messages
 nest_asyncio_err = "cannot be called from a running event loop"
@@ -75,7 +81,7 @@ class VLMPDFReader(BasePydanticReader):
         description="The number of workers to use sending API requests for parsing.",
     )
     show_progress: bool = Field(
-        default=True, description="Show progress when parsing multiple pages."
+        default=True, description="Show progress"
     )
     cache_dir: str | Path = Field(
         default="",
@@ -85,6 +91,7 @@ class VLMPDFReader(BasePydanticReader):
 
     _client_gemini: Client = PrivateAttr(default=None, init=False)
     _client_mistral: Mistral = PrivateAttr(default=None, init=False)
+    _template: Template = PrivateAttr(default=None, init=False)
 
     @field_validator("cache_dir", mode="after", check_fields=True)
     @classmethod
@@ -125,9 +132,9 @@ class VLMPDFReader(BasePydanticReader):
 
     def load_data(
         self,
-        file: Union[List[FileInput], FileInput],
-        extra_info: Optional[dict] = None
-    ) -> List[Document]:
+        file: list[FileInput] | FileInput,
+        extra_info: list[dict] | dict | None = None,
+    ) -> list[Document]:
         """Load PDF data into Document objects."""
         try:
             return asyncio_run(self.aload_data(file, extra_info))
@@ -137,7 +144,7 @@ class VLMPDFReader(BasePydanticReader):
             else:
                 raise e
 
-    @tenacity.retry(wait=wait_fixed(5), retry=retry_if_exception_type(SDKError))
+    @tenacity.retry(wait=wait_fixed(WAIT_SECONDS), retry=retry_if_exception_type((SDKError, ServerError)), reraise=True, stop=stop_after_attempt(10))
     async def _aload_page(
         self,
         reader: PdfReader,
@@ -153,7 +160,7 @@ class VLMPDFReader(BasePydanticReader):
 
         # Convert PDF to image
         images = convert_from_bytes(page_content)
-        image = images[0]  # Assuming you want the first page
+        image = images[0]
 
         # Save the image to a bytes buffer
         with BytesIO() as image_bytes_stream:
@@ -210,7 +217,7 @@ class VLMPDFReader(BasePydanticReader):
     async def _aload_data(
         self,
         file_path: FileInput,
-        extra_info: Optional[dict] = None,
+        extra_info: dict | None = None,
         show_progress: bool = False,
     ) -> Document:
         file_path = Path(file_path)
@@ -246,6 +253,7 @@ class VLMPDFReader(BasePydanticReader):
             )
             results = [_postprocess_markdown_output(r) for r in results]
             transcription = "".join([f"{r}\n\n--- end page {i + 1}\n\n" for i, r in enumerate(results)])
+            output_file_path.parent.mkdir(parents=True, exist_ok=True)
             output_file_path.write_text(transcription)
             return Document(text=transcription, metadata=metadata)
         except RuntimeError as e:
@@ -256,21 +264,25 @@ class VLMPDFReader(BasePydanticReader):
 
     async def aload_data(
         self,
-        file_path: Union[List[FileInput], FileInput],
-        extra_info: Optional[dict] = None,
+        file_path: list[FileInput] | FileInput,
+        extra_info: list[dict] | dict | None = None,
     ) -> List[Document]:
         """Load data from the input path."""
         if isinstance(file_path, (str, Path)):
             doc = await self._aload_data(file_path, extra_info=extra_info, show_progress=self.show_progress)
             return [doc]
         elif isinstance(file_path, list):
+            if extra_info and len(extra_info) != len(file_path):
+                raise ValueError(f"extra_info (length {len(extra_info)} and file_path (length {len(file_path)} must have same length")
+            if extra_info is None:
+                extra_info = [None] * len(file_path)
             jobs = [
                 self._aload_data(
                     f,
-                    extra_info=extra_info,
+                    extra_info=info,
                     show_progress=False,
                 )
-                for f in file_path
+                for info, f in zip(extra_info, file_path)
             ]
             try:
                 results = await run_jobs(
@@ -289,3 +301,114 @@ class VLMPDFReader(BasePydanticReader):
             raise ValueError(
                 "The input file_path must be a string or a list of strings."
             )
+
+
+class PDFDirectoryReader(BasePydanticReader):
+
+    root_dir: str = Field(
+        default="",
+        description="Root directory of PDF files",
+        validate_default=True,
+    )
+    cache_dir: str | Path = Field(
+        default="",
+        description="Cache directory for files.",
+        validate_default=True,
+    )
+    num_workers: int = Field(
+        default=4,
+        gt=0,
+        lt=64,
+        description="The number of workers to use sending API requests for parsing.",
+    )
+    show_progress: bool = Field(
+        default=True,
+        description="Show progress"
+    )
+
+    _vlm_reader: VLMPDFReader = PrivateAttr(default=None, init=False)
+
+    @field_validator("cache_dir", mode="after", check_fields=True)
+    @classmethod
+    def validate_cache_dir(cls, value: str) -> Path:
+        if not value:
+            raise ValueError("Cache directory cannot be empty")
+        cache_dir = Path(value)
+        if not cache_dir.exists():
+            raise ValueError(f"Cache directory {str(cache_dir)} does not exist.")
+        return cache_dir
+
+    @field_validator("root_dir", mode="after", check_fields=True)
+    @classmethod
+    def validate_root_dir(cls, value: str) -> Path:
+        if not value:
+            raise ValueError("Root directory cannot be empty")
+        root_dir = Path(value)
+        if not root_dir.exists():
+            raise ValueError(f"Root directory {str(root_dir)} does not exist.")
+        return root_dir
+
+    def model_post_init(self, __context: Any) -> None:
+        self._vlm_reader = VLMPDFReader(
+            cache_dir=self.cache_dir,
+            num_workers=self.num_workers,
+            show_progress=self.show_progress,
+        )
+
+    def _file_metadata_func(self, file_path: str | Path) -> dict:
+        fs = get_default_fs()
+        file_path = str(file_path)
+        stat_result = fs.stat(file_path)
+
+        try:
+            file_name = os.path.basename(str(stat_result["name"]))
+        except Exception as e:
+            file_name = os.path.basename(file_path)
+
+        creation_date = _format_file_timestamp(stat_result.get("created"))
+        last_modified_date = _format_file_timestamp(stat_result.get("mtime"))
+        last_accessed_date = _format_file_timestamp(stat_result.get("atime"))
+        default_meta = {
+            "file_path": file_path,
+            "file_name": file_name,
+            "file_type": mimetypes.guess_type(file_path)[0],
+            "file_size": stat_result.get("size"),
+            "creation_date": creation_date,
+            "last_modified_date": last_modified_date,
+            "last_accessed_date": last_accessed_date,
+        }
+        relative_path = Path(file_path).relative_to(self.root_dir)
+        default_meta["relative_path"] = str(relative_path)
+
+        # Return not null value
+        return {
+            meta_key: meta_value
+            for meta_key, meta_value in default_meta.items()
+            if meta_value is not None
+        }
+
+    def _pre_load_data(self, input_dir: str | Path) -> tuple[list[Path], list[dict]]:
+        input_dir = Path(input_dir)
+        if not input_dir.is_relative_to(self.root_dir):
+            raise ValueError(f"Input directory {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
+        pdfs_files = list(input_dir.rglob("*.pdf"))
+        extra_info = [self._file_metadata_func(file_path=pdf_file) for pdf_file in pdfs_files]
+        return pdfs_files, extra_info
+
+    def load_data(self, input_dir: str | Path) -> list[Document]:
+        input_dir = Path(input_dir)
+        if not input_dir.is_relative_to(self.root_dir):
+            raise ValueError(f"Input directory {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
+        pdfs_files = list(input_dir.rglob("*.pdf"))
+        if len(pdfs_files) == 0:
+            return list()
+        extra_info = [self._file_metadata_func(file_path=pdf_file) for pdf_file in pdfs_files]
+        documents = self._vlm_reader.load_data(pdfs_files, extra_info=extra_info)
+        return documents
+
+    async def aload_data(self, input_dir: str | Path) -> list[Document]:
+        pdfs_files, extra_info = self._pre_load_data(input_dir)
+        if len(pdfs_files) == 0:
+            return list()
+        else:
+            return await self._vlm_reader.aload_data(pdfs_files, extra_info=extra_info)
