@@ -48,6 +48,7 @@ Settings.llm = Gemini(model_name="models/gemini-2.0-flash", api_key=os.getenv("G
 opio_dir_path = Path("/home/nicolas/Documents/projets/opio/")
 raw_data_path = opio_dir_path / "raw data"
 orano_dir_path =  opio_dir_path / "raw data" / "4 - donnees demo Orano RAA 2016-2023"
+thales_dir_path = opio_dir_path / "raw data" / "6 - Dataroom fictive Thales"
 
 shell_dir_path = opio_dir_path / "raw data" / "Shell Dec 5 2024"
 small_data_dir_path = opio_dir_path / "small data"
@@ -69,7 +70,7 @@ pdf_reader = PDFDirectoryReader(
     show_progress=True,
 )
 
-documents = pdf_reader.load_data(orano_dir_path)
+documents = pdf_reader.load_data(thales_dir_path)
 
 
 

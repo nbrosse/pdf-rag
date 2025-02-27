@@ -46,9 +46,6 @@ class FullPagePostprocessor(BaseNodePostprocessor):
                 page_node_ids = self.doc_page_node_ids[(doc_id, page_number)]
                 page_nodes = [self.docstore.get_node(node_id) for node_id in page_node_ids]
                 content = "\n".join([n.get_content(metadata_mode=MetadataMode.NONE) for n in page_nodes])
-                # filename = page_nodes[0].metadata['filename']
-                # source = f"Source {filename}"
-                # content = f"Source {len(new_nodes) + 1}:\n{text_chunk}\n"
                 page_node = TextNode(
                     text=content,
                     metadata=page_nodes[0].metadata,

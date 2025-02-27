@@ -1,4 +1,3 @@
-import asyncio
 import os
 import time
 from pathlib import Path
@@ -8,7 +7,6 @@ import tiktoken
 from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, QueryBundle, PromptTemplate, \
     get_response_synthesizer, SummaryIndex
 from llama_index.core.agent import ReActAgent
-from llama_index.core.async_utils import run_jobs, asyncio_run
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.ingestion import DocstoreStrategy, IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
@@ -54,24 +52,30 @@ storage_dir = opio_dir_path / "storage"
 pdf_files = list(shell_dir_path.glob("*.pdf"))
 print(len(pdf_files))
 
+# queries = [
+#     "What is the cash position of Shell at the end of 2022?",
+#     "What is the cash position of Shell at the end of 2023?",
+#     "What is the cash position of Shell at the end of 2019?",
+#     "What is the cash flow from operating activities of Shell in 2019?",
+#     "What is the free cash flow of Shell in 2018?",
+#     "What are the primary drivers of cash flow variability in Shell business?",
+#     "What was the percentage of free cash flow that was distributed to shareholders in 2019?",
+#     "How many employees does Shell have in France in 2023?",
+#     "How many employees does Shell have in Albania? Look in the 2023 tax report",
+#     "What are the taxes paid by Shell in Thailand in 2023?",
+#     "What is the name of the association Shell paid the most in 2023?",
+#     "What is the position of the Canadian Association of Petroleum Producers on ending routine flaring?",
+#     "Detail Shell's current financing arrangements and the terms associated with them",
+#     "What are the revenues per business unit in 2023?",
+#     "What are the Non-GAAP measures reported in Shell's consolidated results in 2023?",
+#     "What are the revenues per segment earnings in 2023?",
+#     "What are the key metrics reported in Shell's consolidated results in 2023?"
+# ]
+
 queries = [
-    "What is the cash position of Shell at the end of 2022?",
-    "What is the cash position of Shell at the end of 2023?",
-    "What is the cash position of Shell at the end of 2019?",
-    "What is the cash flow from operating activities of Shell in 2019?",
-    "What is the free cash flow of Shell in 2018?",
-    "What are the primary drivers of cash flow variability in Shell business?",
-    "What was the percentage of free cash flow that was distributed to shareholders in 2019?",
     "How many employees does Shell have in France in 2023?",
-    "How many employees does Shell have in Albania? Look in the 2023 tax report",
+    # "How many employees does Shell have in Albania? Look in the 2023 tax report",
     "What are the taxes paid by Shell in Thailand in 2023?",
-    "What is the name of the association Shell paid the most in 2023?",
-    "What is the position of the Canadian Association of Petroleum Producers on ending routine flaring?",
-    "Detail Shell's current financing arrangements and the terms associated with them",
-    "What are the revenues per business unit in 2023?",
-    "What are the Non-GAAP measures reported in Shell's consolidated results in 2023?",
-    "What are the revenues per segment earnings in 2023?",
-    "What are the key metrics reported in Shell's consolidated results in 2023?"
 ]
 
 # query = queries[1]
@@ -130,23 +134,35 @@ class CustomObjectRetriever(ObjectRetriever):
             ),
         )
         retrieved_tools = tools + [sub_question_tool] + self._additional_tools
+        # query_engine = retrieved_tools[-1].query_engine
+        # retrieved_nodes = query_engine.retrieve(query_bundle)
+        # content = list()
+        # for n in retrieved_nodes:
+        #     content.append("----------------")
+        #     content.append(str(n.score))
+        #     content.append(n.get_content("LLM"))
+        # content = "\n".join(content)
+        # temp_file = Path(__file__).parent / "temp.txt"
+        # temp_file.write_text(content)
         return retrieved_tools
 
 
-
-async def abuild_agent_per_doc(pdf_file: Path):
+def build_agent_per_doc(pdf_file: Path):
     vector_index_persist_path = storage_dir / f"{pdf_file.stem}_vector"
     summary_index_persist_path = storage_dir / f"{pdf_file.stem}_summary"
     summary_path = storage_dir / f"{pdf_file.stem}_summary.txt"
     if vector_index_persist_path.exists() and summary_index_persist_path.exists():
+        start_time = time.perf_counter()
         vector_index = load_index_from_storage(
             StorageContext.from_defaults(persist_dir=str(vector_index_persist_path)),
         )
         summary_index = load_index_from_storage(
             StorageContext.from_defaults(persist_dir=str(summary_index_persist_path)),
         )
+        duration = time.perf_counter() - start_time
+        print(f"{pdf_file.stem} loading {duration}")
     else:
-        documents = await vlm_reader.aload_data(pdf_file)
+        documents = vlm_reader.load_data(pdf_file)
         nodes = markdown_parser.get_nodes_from_documents(documents=documents)
         nodes = sentence_splitter(nodes)
         vector_index = VectorStoreIndex(nodes)
@@ -161,10 +177,10 @@ async def abuild_agent_per_doc(pdf_file: Path):
     # extract a summary
     if not summary_path.exists():
         summary = (
-            await summary_query_engine.aquery(
+            summary_query_engine.query(
                 "Extract a summary of this document"
-            )
-        ).response
+            ).response
+        )
         summary_path.write_text(summary)
     else:
         summary = summary_path.read_text()
@@ -202,32 +218,15 @@ async def abuild_agent_per_doc(pdf_file: Path):
     return agent, summary
 
 
-async def abuild_agents(dir_path: Path):
+def build_agents(dir_path: Path):
     pdf_files = list(dir_path.glob("*.pdf"))
 
-    jobs = [
-        abuild_agent_per_doc(pdf_file) for pdf_file in pdf_files
-    ]
-
-    # results = await asyncio.gather(
-    #     *(abuild_agent_per_doc(pdf_file) for pdf_file in pdf_files)
-    # )
-
-    results = await run_jobs(
-        jobs=jobs,
-        show_progress=True,
-        workers=4,
-        desc="Building agents",
-    )
-
-    # Build agents dictionary
     agents_dict = {}
     extra_info_dict = {}
 
-    for pdf_file, result in zip(pdf_files, results):
-        agent, summary = result
+    for pdf_file in tqdm(pdf_files, desc="Building agents"):
+        agent, summary = build_agent_per_doc(pdf_file)
         agents_dict[pdf_file.stem] = agent
-        # extra_info_dict[pdf_file.stem] = {"summary": summary, "nodes": nodes}
         extra_info_dict[pdf_file.stem] = {"summary": summary}
 
     return agents_dict, extra_info_dict
@@ -258,7 +257,7 @@ def build_global_vector_query_engine(dir_path: Path) -> QueryEngineTool | None:
             StorageContext.from_defaults(persist_dir=str(global_vector_index_persist_path)),
         )
         duration = time.perf_counter() - start_time
-        print(f"Global vector loading {duration}")
+        print(duration)
     else:
         pdf_files = list(dir_path.glob("*.pdf"))
         if len(pdf_files) < 2:
@@ -288,7 +287,7 @@ def build_global_vector_query_engine(dir_path: Path) -> QueryEngineTool | None:
     return query_engine_tool
 
 
-async def process_query(queries: list[str], agents_dict: dict, extra_info_dict: dict):
+def process_query(queries: list[str], agents_dict: dict, extra_info_dict: dict):
     all_tools = []
     for file_base, agent in agents_dict.items():
         summary = extra_info_dict[file_base]["summary"]
@@ -310,112 +309,55 @@ async def process_query(queries: list[str], agents_dict: dict, extra_info_dict: 
     )
 
     global_query_engine = build_global_vector_query_engine(shell_dir_path)
+    # retriever = global_query_engine.query_engine.retriever
+    # docstore = retriever._docstore
+    # vecstore = retriever._vector_store
+    # index = retriever._index
+    # nodes = list(docstore.docs.values())
+    # ref_nodes = [n for n in nodes if (n.metadata["page_number"] == 55 and n.metadata["filename"] == "tax-contribution-report-2023.pdf")]
+    # ref_nodes_emb = index._get_node_with_embedding(ref_nodes)
+    # query = queries[0]
+    # ref_vector_index = VectorStoreIndex(nodes=ref_nodes_emb)
+    # ref_retriever = ref_vector_index.as_retriever(similarity_top_k=10)
+    # scores = ref_retriever.retrieve(query)
 
     custom_obj_retriever = CustomObjectRetriever(
         vector_node_retriever,
         obj_index.object_node_mapping,
-        additional_tools=[global_query_engine],
+        additional_tools=[global_query_engine] if global_query_engine else [],
     )
-
-    # retrieved_tools = custom_obj_retriever.retrieve(queries[0])
-    # retrieved_nodes = retrieved_tools[-1].query_engine.retrieve(queries[0])
 
     top_agent = ReActAgent.from_tools(
         tool_retriever=custom_obj_retriever,
-        # system_prompt="""
-        # You are an agent designed to answer queries about the documentation.
-        # Please always use the tools provided to answer a question. Do not rely on prior knowledge.
-        # """,
+        system_prompt="""
+        You are an agent designed to answer queries about the documentation.
+        Please always use the tools provided to answer a question. Do not rely on prior knowledge.
+        """,
         verbose=True,
     )
-    responses = [await top_agent.aquery(query) for query in queries]
-
+    responses = list()
+    for query in queries:
+        try:
+            response = top_agent.query(query)
+            responses.append(response)
+            print(response)
+        except Exception as e:
+            print(f"Query failed: {query}, with error: {e}")
     return responses
 
 
-async def main():
-    agents_dict, extra_info_dict = await abuild_agents(shell_dir_path)
+def main():
+    agents_dict, extra_info_dict = build_agents(shell_dir_path)
+    # agents_dict, extra_info_dict = None, None
+
 
     if not agents_dict:
         raise ValueError("No agents were built.")
 
-    # Process the first query from your queries list
-    responses = await process_query(queries, agents_dict, extra_info_dict)
+    # Process the queries list
+    responses = process_query(queries, agents_dict, extra_info_dict)
     return responses
 
 
 if __name__ == "__main__":
-    responses = asyncio_run(main())
-    for response in responses:
-        print(response)
-
-
-# async def main():
-#     agents_dict, extra_info_dict = await abuild_agents(shell_dir_path)
-#
-#     if not agents_dict:
-#         raise ValueError("No agents were built.")
-#
-#     # define tool for each document agent
-#     all_tools = []
-#     for file_base, agent in agents_dict.items():
-#         summary = extra_info_dict[file_base]["summary"]
-#         doc_tool = QueryEngineTool(
-#             query_engine=agent,
-#             metadata=ToolMetadata(
-#                 name=f"tool_{file_base}",
-#                 description=summary,
-#             ),
-#         )
-#         all_tools.append(doc_tool)
-#
-#
-#     obj_index = ObjectIndex.from_objects(
-#         all_tools,
-#         index_cls=VectorStoreIndex,
-#     )
-#     vector_node_retriever = obj_index.as_node_retriever(
-#         similarity_top_k=10,
-#     )
-#
-#     # wrap it with ObjectRetriever to return objects
-#     custom_obj_retriever = CustomObjectRetriever(
-#         vector_node_retriever,
-#         obj_index.object_node_mapping,
-#     )
-#
-#     top_agent = ReActAgent.from_tools(
-#         tool_retriever=custom_obj_retriever,
-#         system_prompt=""" \
-#     You are an agent designed to answer queries about the documentation.
-#     Please always use the tools provided to answer a question. Do not rely on prior knowledge.\
-#     """,
-#         verbose=True,
-#     )
-#
-#     response = await top_agent.aquery(queries[0])
-#     return response
-#
-# # outputs_dir = opio_dir_path / "outputs_multi_v1"
-# # outputs_dir.mkdir(parents=True, exist_ok=True)
-# #
-# # for i, query in enumerate(queries):
-# #     output = list()
-# #     retrieved_nodes = query_engine.retrieve(QueryBundle(query))
-# #     response = query_engine.query(query)
-# #     output.append(query)
-# #     output.append(str(response))
-# #     for node in retrieved_nodes:
-# #         output.append("-------------------------------------------------")
-# #         output.append(str(node.score))
-# #         output.append(str(node.metadata["page_number"]))
-# #         output.append(node.text)
-# #     output_content = "\n".join(output)
-# #     output_file = outputs_dir / f"output_{i}.md"
-# #     output_file.write_text(output_content)
-#
-#
-# #
-#
-# if __name__ == "__main__":
-#     response = asyncio_run(main())
+    responses = main()

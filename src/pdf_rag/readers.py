@@ -3,7 +3,7 @@ import logging
 import mimetypes
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, List, Union, Any
+from typing import List, Any
 
 import re
 
@@ -33,6 +33,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 WAIT_SECONDS: int = 5
+MAX_ATTEMPTS: int = 10
 
 # Asyncio error messages
 nest_asyncio_err = "cannot be called from a running event loop"
@@ -77,7 +78,7 @@ class VLMPDFReader(BasePydanticReader):
     num_workers: int = Field(
         default=4,
         gt=0,
-        lt=64,
+        # lt=64,
         description="The number of workers to use sending API requests for parsing.",
     )
     show_progress: bool = Field(
@@ -144,7 +145,7 @@ class VLMPDFReader(BasePydanticReader):
             else:
                 raise e
 
-    @tenacity.retry(wait=wait_fixed(WAIT_SECONDS), retry=retry_if_exception_type((SDKError, ServerError)), reraise=True, stop=stop_after_attempt(10))
+    @tenacity.retry(wait=wait_fixed(WAIT_SECONDS), retry=retry_if_exception_type((SDKError, ServerError)), reraise=True, stop=stop_after_attempt(MAX_ATTEMPTS))
     async def _aload_page(
         self,
         reader: PdfReader,
@@ -318,7 +319,7 @@ class PDFDirectoryReader(BasePydanticReader):
     num_workers: int = Field(
         default=4,
         gt=0,
-        lt=64,
+        # lt=64,
         description="The number of workers to use sending API requests for parsing.",
     )
     show_progress: bool = Field(
@@ -390,21 +391,22 @@ class PDFDirectoryReader(BasePydanticReader):
     def _pre_load_data(self, input_dir: str | Path) -> tuple[list[Path], list[dict]]:
         input_dir = Path(input_dir)
         if not input_dir.is_relative_to(self.root_dir):
-            raise ValueError(f"Input directory {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
-        pdfs_files = list(input_dir.rglob("*.pdf"))
+            raise ValueError(f"Input directory or file {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
+        if input_dir.is_dir():
+            pdfs_files = list(input_dir.rglob("*.pdf"))
+        elif input_dir.is_file() and input_dir.suffix == ".pdf":
+            pdfs_files = [input_dir]
+        else:
+            raise ValueError(f"Input {str(input_dir)} must be a PDF file or a directory.")
         extra_info = [self._file_metadata_func(file_path=pdf_file) for pdf_file in pdfs_files]
         return pdfs_files, extra_info
 
     def load_data(self, input_dir: str | Path) -> list[Document]:
-        input_dir = Path(input_dir)
-        if not input_dir.is_relative_to(self.root_dir):
-            raise ValueError(f"Input directory {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
-        pdfs_files = list(input_dir.rglob("*.pdf"))
+        pdfs_files, extra_info = self._pre_load_data(input_dir)
         if len(pdfs_files) == 0:
             return list()
-        extra_info = [self._file_metadata_func(file_path=pdf_file) for pdf_file in pdfs_files]
-        documents = self._vlm_reader.load_data(pdfs_files, extra_info=extra_info)
-        return documents
+        else:
+            return self._vlm_reader.load_data(pdfs_files, extra_info=extra_info)
 
     async def aload_data(self, input_dir: str | Path) -> list[Document]:
         pdfs_files, extra_info = self._pre_load_data(input_dir)
