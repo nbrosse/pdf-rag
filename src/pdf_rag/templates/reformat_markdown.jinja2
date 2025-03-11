@@ -18,6 +18,9 @@ Your task is to transform the document into a well-structured markdown document 
    - Maintain all technical details, examples, and code snippets
    - Keep all original links, references, and citations
    - Preserve all numerical data and specifications
+   {% if landscape %}
+   - Preserve `---end page ...` markers
+   {% endif %}
 
 2. Document Structure:
    - Ensure exactly one H1 (#) title at the start

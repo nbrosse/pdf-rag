@@ -5,8 +5,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import List, Any
 
-import re
-
 import tenacity
 from google.genai import Client, types
 from google.genai.errors import ServerError
@@ -27,6 +25,7 @@ from dotenv import load_dotenv
 from tenacity import wait_fixed, retry_if_exception_type, stop_after_attempt
 
 from pdf_rag.config import jinja2_env
+from pdf_rag.utils import postprocess_markdown_output
 
 load_dotenv()
 
@@ -42,16 +41,16 @@ nest_asyncio_msg = "The event loop is already running. Add `import nest_asyncio;
 FileInput = Path | str
 
 
-def _postprocess_markdown_output(response: str) -> str:
-    pattern = r"```markdown\s*(.*?)(```|$)"
-    try:
-        match = re.search(pattern, response, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        else:
-            return response
-    except Exception as e:
-        return "GEMINI ERROR PARSING"
+def _get_pdf_medadata(reader: PdfReader) -> dict[str, Any]:
+    nb_pages = reader.get_num_pages()
+    initial_page = reader.pages[0]
+    width = initial_page.mediabox.width
+    height = initial_page.mediabox.height
+    if width > height:
+        format = "landscape"
+    else:
+        format = "portrait"
+    return {"nb_pages": nb_pages, "format": format}
 
 
 class VLMPDFReader(BasePydanticReader):
@@ -111,7 +110,7 @@ class VLMPDFReader(BasePydanticReader):
         if not v:
             api_key = os.getenv("GEMINI_API_KEY", None)
             if api_key is None:
-                raise ValueError("The API key is required.")
+                raise ValueError("The GEMINI API key is required.")
             return api_key
         return v
 
@@ -122,7 +121,7 @@ class VLMPDFReader(BasePydanticReader):
         if not v:
             api_key = os.getenv("MISTRAL_API_KEY", None)
             if api_key is None:
-                raise ValueError("The API key is required.")
+                raise ValueError("The MISTRAL API key is required.")
             return api_key
         return v
 
@@ -150,6 +149,7 @@ class VLMPDFReader(BasePydanticReader):
         self,
         reader: PdfReader,
         page_num: int,
+        relative_path: str,
     ):
         page = reader.pages[page_num]
         writer = PdfWriter()
@@ -208,12 +208,11 @@ class VLMPDFReader(BasePydanticReader):
                     messages=messages
                 )
                 return response.choices[0].message.content
-            case _:  # "STOP":
+            case "STOP":
                 return response.text
-            # case _:
-            #     image.save(f"image_{page_num}.png")
-            #     print(response.text)
-            #     raise RuntimeError(f"Unknown finish reason: {finish_reason}")
+            case _:
+                logger.error(str(response))
+                raise RuntimeError(f"Unknown finish reason: {finish_reason} for file {relative_path}, page number {page_num}")
 
     async def _aload_data(
         self,
@@ -233,7 +232,8 @@ class VLMPDFReader(BasePydanticReader):
         output_file_path = self.cache_dir / f"{relative_path}.md"
         reader = PdfReader(str(file_path))
         nb_pages = reader.get_num_pages()
-        metadata = {"nb_pages": nb_pages, "filename": file_path.name}
+        metadata = _get_pdf_medadata(reader)
+        metadata["filename"] = file_path.name
         if extra_info:
             metadata.update(extra_info)
         if output_file_path.exists():
@@ -243,6 +243,7 @@ class VLMPDFReader(BasePydanticReader):
             self._aload_page(
                 reader=reader,
                 page_num=page_num,
+                relative_path=relative_path,
             ) for page_num in range(nb_pages)
         ]
         try:
@@ -252,7 +253,7 @@ class VLMPDFReader(BasePydanticReader):
                 desc=f"Parsing file {file_path.name}",
                 show_progress=show_progress,
             )
-            results = [_postprocess_markdown_output(r) for r in results]
+            results = [postprocess_markdown_output(r) for r in results]
             transcription = "".join([f"{r}\n\n--- end page {i + 1}\n\n" for i, r in enumerate(results)])
             output_file_path.parent.mkdir(parents=True, exist_ok=True)
             output_file_path.write_text(transcription)
@@ -316,10 +317,27 @@ class PDFDirectoryReader(BasePydanticReader):
         description="Cache directory for files.",
         validate_default=True,
     )
+    api_key_gemini: str = Field(
+        default="",
+        description="Google API key for Gemini",
+        validate_default=True,
+    )
+    api_key_mistral: str = Field(
+        default="",
+        description="Mistral API key",
+        validate_default=True,
+    )
+    model_name_gemini: str = Field(
+        default="gemini-2.0-flash",
+        description="Gemini model name to use"
+    )
+    model_name_mistral: str = Field(
+        default="pixtral-large-latest",
+        description="Mistral model name to use"
+    )
     num_workers: int = Field(
         default=4,
         gt=0,
-        # lt=64,
         description="The number of workers to use sending API requests for parsing.",
     )
     show_progress: bool = Field(
@@ -349,8 +367,34 @@ class PDFDirectoryReader(BasePydanticReader):
             raise ValueError(f"Root directory {str(root_dir)} does not exist.")
         return root_dir
 
+    @field_validator("api_key_gemini", mode="before", check_fields=True)
+    @classmethod
+    def validate_api_key_gemini(cls, v: str) -> str:
+        """Validate the API key."""
+        if not v:
+            api_key = os.getenv("GEMINI_API_KEY", None)
+            if api_key is None:
+                raise ValueError("The GEMINI API key is required.")
+            return api_key
+        return v
+
+    @field_validator("api_key_mistral", mode="before", check_fields=True)
+    @classmethod
+    def validate_api_key_mistral(cls, v: str) -> str:
+        """Validate the API key."""
+        if not v:
+            api_key = os.getenv("MISTRAL_API_KEY", None)
+            if api_key is None:
+                raise ValueError("The MISTRAL API key is required.")
+            return api_key
+        return v
+
     def model_post_init(self, __context: Any) -> None:
         self._vlm_reader = VLMPDFReader(
+            api_key_gemini=self.api_key_gemini,
+            api_key_mistral=self.api_key_mistral,
+            model_name_gemini=self.model_name_gemini,
+            model_name_mistral=self.model_name_mistral,
             cache_dir=self.cache_dir,
             num_workers=self.num_workers,
             show_progress=self.show_progress,
@@ -380,6 +424,7 @@ class PDFDirectoryReader(BasePydanticReader):
         }
         relative_path = Path(file_path).relative_to(self.root_dir)
         default_meta["relative_path"] = str(relative_path)
+        default_meta["cache_dir"] = str(self.cache_dir)
 
         # Return not null value
         return {

@@ -5,9 +5,7 @@
 Generate a hierarchical table of contents for the slides deck above by:
 
 1. IDENTIFY SECTION BREAKS
-- Look for pages that ONLY contain titles/headings (no other content)
 - Section breaks are marked by "--- end page {n}" where n is the page number
-- Ignore pages with regular content
 
 2. EXTRACT SECTION INFO
 - Get the title text from each section break page
@@ -24,10 +22,7 @@ Example output:
 # Implementation (Page 12)
 
 Requirements:
-- Only include actual section divider pages
 - Page numbers must be unique and sequential
-- Preserve the exact heading text from source
 - Ignore any formatting in the section titles
-- If no valid sections found, output "No section breaks detected"
 
 The TOC should help readers quickly navigate the main sections of the deck.
