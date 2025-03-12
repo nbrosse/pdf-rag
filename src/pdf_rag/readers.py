@@ -21,13 +21,10 @@ import os
 from google import genai
 from pypdf import PdfReader, PdfWriter
 
-from dotenv import load_dotenv
 from tenacity import wait_fixed, retry_if_exception_type, stop_after_attempt
 
 from pdf_rag.config import jinja2_env
 from pdf_rag.utils import postprocess_markdown_output
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 

@@ -260,3 +260,8 @@ fabric.properties
 
 # Ignore dynaconf secret files
 .secrets.*
+
+# Ignore everything inside the data directory
+data/*
+# Except the pdfs directory
+!data/pdfs
