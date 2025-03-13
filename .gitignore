@@ -265,3 +265,5 @@ fabric.properties
 data/*
 # Except the pdfs directory
 !data/pdfs
+# Configs
+configs/*_nicolas.yaml
