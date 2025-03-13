@@ -1,0 +1,10 @@
+data_dir: "/home/nicolas/PycharmProjects/pdf-rag/data/"
+erase: false
+api_key_gemini: null
+api_key_mistral: null
+num_workers: 32
+neo4j_uri: "neo4j+s://64da489a.databases.neo4j.io"
+neo4j_username: "neo4j"
+neo4j_password: "KEvOThPizYvt0TmDS3XwczPI1wRc1rKCrOUICAaFqtg"
+neo4j_database: "neo4j"
+pipeline_step: "all"

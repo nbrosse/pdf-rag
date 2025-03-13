@@ -1,0 +1,27 @@
+api_key_gemini: null
+api_key_mistral: null
+data_dir: "/home/nicolas/PycharmProjects/pdf-rag/data/"
+num_workers: 16
+chunks_top_k: 5
+nodes_top_k: 10
+max_iterations: 20
+verbose: true
+queries:
+  - "What are the vulnerabilities introduced by relying on application programming interfaces (APIs) in Banking as a Service (BaaS)?"
+  - "What mitigation opportunities are there to ensure strong security for BaaS platforms and API connectivity?"
+  - "How can the industry best improve due diligence on BaaS providers in this landscape?"
+  - "What are the common objectives of the Open Data ecosystem?"
+  - "What are key strategic decisions to be made by ecosystem participants?"
+  - "How can the public and private sectors collaborate to promote innovation, secure data sharing, and data privacy within the Open Data ecosystem?"
+  - "What are the key characteristics that define the Leaders, Major Contenders, and Aspirants within the Life Sciences Smart Manufacturing Services PEAK Matrix?"
+  - "What are some of the solutions that can assist biopharma and MedTech manufacturers with insights that help optimize manufacturing processes and improve product quality?"
+  - "How are different areas of a manufacturing line benefiting from AI?"
+  - "What are ConocoPhillips' key financial priorities for the next 10 years?"
+  - "How does ConocoPhillips plan to meet it's Net-Zero and Emissions targets?"
+  - "What is ConocoPhillips strategy to grow production?"
+  - "What are the key features and capabilities of the XC9500 In-System Programmable CPLD family?"
+  - "How does the Fast CONNECT switch matrix enable flexible signal routing and logic implementation within the XC9500 devices?"
+  - "What design security options are available in the XC9500 family, and how do they protect programming data?"
+  - "What strategies are companies implementing to address tax transformation in a data-driven world?"
+  - "How can tax departments effectively invest in technology to meet compliance and strategic goals?"
+  - "How can tax departments collaborate internally to secure budget and ensure technology alignment?"
