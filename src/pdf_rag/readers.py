@@ -33,7 +33,9 @@ MAX_ATTEMPTS: int = 10
 
 # Asyncio error messages
 nest_asyncio_err = "cannot be called from a running event loop"
-nest_asyncio_msg = "The event loop is already running. Add `import nest_asyncio; nest_asyncio.apply()` to your code to fix this issue."
+nest_asyncio_msg = (
+    "The event loop is already running. Add `import nest_asyncio; nest_asyncio.apply()` to your code to fix this issue."
+)
 
 FileInput = Path | str
 
@@ -63,23 +65,15 @@ class VLMPDFReader(BasePydanticReader):
         description="Mistral API key",
         validate_default=True,
     )
-    model_name_gemini: str = Field(
-        default="gemini-2.0-flash",
-        description="Gemini model name to use"
-    )
-    model_name_mistral: str = Field(
-        default="pixtral-large-latest",
-        description="Mistral model name to use"
-    )
+    model_name_gemini: str = Field(default="gemini-2.0-flash", description="Gemini model name to use")
+    model_name_mistral: str = Field(default="pixtral-large-latest", description="Mistral model name to use")
     num_workers: int = Field(
         default=4,
         gt=0,
         # lt=64,
         description="The number of workers to use sending API requests for parsing.",
     )
-    show_progress: bool = Field(
-        default=True, description="Show progress"
-    )
+    show_progress: bool = Field(default=True, description="Show progress")
     cache_dir: str | Path = Field(
         default="",
         description="Cache directory for files.",
@@ -141,7 +135,12 @@ class VLMPDFReader(BasePydanticReader):
             else:
                 raise e
 
-    @tenacity.retry(wait=wait_fixed(WAIT_SECONDS), retry=retry_if_exception_type((SDKError, ServerError)), reraise=True, stop=stop_after_attempt(MAX_ATTEMPTS))
+    @tenacity.retry(
+        wait=wait_fixed(WAIT_SECONDS),
+        retry=retry_if_exception_type((SDKError, ServerError)),
+        reraise=True,
+        stop=stop_after_attempt(MAX_ATTEMPTS),
+    )
     async def _aload_page(
         self,
         reader: PdfReader,
@@ -196,20 +195,20 @@ class VLMPDFReader(BasePydanticReader):
                                 "type": "text",
                                 "text": prompt,
                             },
-
-                        ]
+                        ],
                     }
                 ]
                 response = await self._client_mistral.chat.complete_async(
-                    model=self.model_name_mistral,
-                    messages=messages
+                    model=self.model_name_mistral, messages=messages
                 )
                 return response.choices[0].message.content
             case "STOP":
                 return response.text
             case _:
                 logger.error(str(response))
-                raise RuntimeError(f"Unknown finish reason: {finish_reason} for file {relative_path}, page number {page_num}")
+                raise RuntimeError(
+                    f"Unknown finish reason: {finish_reason} for file {relative_path}, page number {page_num}"
+                )
 
     async def _aload_data(
         self,
@@ -241,7 +240,8 @@ class VLMPDFReader(BasePydanticReader):
                 reader=reader,
                 page_num=page_num,
                 relative_path=relative_path,
-            ) for page_num in range(nb_pages)
+            )
+            for page_num in range(nb_pages)
         ]
         try:
             results = await run_jobs(
@@ -272,7 +272,9 @@ class VLMPDFReader(BasePydanticReader):
             return [doc]
         elif isinstance(file_path, list):
             if extra_info and len(extra_info) != len(file_path):
-                raise ValueError(f"extra_info (length {len(extra_info)} and file_path (length {len(file_path)} must have same length")
+                raise ValueError(
+                    f"extra_info (length {len(extra_info)} and file_path (length {len(file_path)} must have same length"
+                )
             if extra_info is None:
                 extra_info = [None] * len(file_path)
             jobs = [
@@ -297,14 +299,11 @@ class VLMPDFReader(BasePydanticReader):
                 else:
                     raise e
         else:
-            raise ValueError(
-                "The input file_path must be a string or a list of strings."
-            )
+            raise ValueError("The input file_path must be a string or a list of strings.")
 
 
 class PDFDirectoryReader(BasePydanticReader):
-
-    root_dir: str = Field(
+    root_dir: str | Path = Field(
         default="",
         description="Root directory of PDF files",
         validate_default=True,
@@ -324,39 +323,29 @@ class PDFDirectoryReader(BasePydanticReader):
         description="Mistral API key",
         validate_default=True,
     )
-    model_name_gemini: str = Field(
-        default="gemini-2.0-flash",
-        description="Gemini model name to use"
-    )
-    model_name_mistral: str = Field(
-        default="pixtral-large-latest",
-        description="Mistral model name to use"
-    )
+    model_name_gemini: str = Field(default="gemini-2.0-flash", description="Gemini model name to use")
+    model_name_mistral: str = Field(default="pixtral-large-latest", description="Mistral model name to use")
     num_workers: int = Field(
         default=4,
         gt=0,
         description="The number of workers to use sending API requests for parsing.",
     )
-    show_progress: bool = Field(
-        default=True,
-        description="Show progress"
-    )
+    show_progress: bool = Field(default=True, description="Show progress")
 
     _vlm_reader: VLMPDFReader = PrivateAttr(default=None, init=False)
 
     @field_validator("cache_dir", mode="after", check_fields=True)
     @classmethod
-    def validate_cache_dir(cls, value: str) -> Path:
+    def validate_cache_dir(cls, value: str | Path) -> Path:
         if not value:
             raise ValueError("Cache directory cannot be empty")
         cache_dir = Path(value)
-        if not cache_dir.exists():
-            raise ValueError(f"Cache directory {str(cache_dir)} does not exist.")
+        cache_dir.mkdir(exist_ok=True, parents=True)
         return cache_dir
 
     @field_validator("root_dir", mode="after", check_fields=True)
     @classmethod
-    def validate_root_dir(cls, value: str) -> Path:
+    def validate_root_dir(cls, value: str | Path) -> Path:
         if not value:
             raise ValueError("Root directory cannot be empty")
         root_dir = Path(value)
@@ -424,16 +413,14 @@ class PDFDirectoryReader(BasePydanticReader):
         default_meta["cache_dir"] = str(self.cache_dir)
 
         # Return not null value
-        return {
-            meta_key: meta_value
-            for meta_key, meta_value in default_meta.items()
-            if meta_value is not None
-        }
+        return {meta_key: meta_value for meta_key, meta_value in default_meta.items() if meta_value is not None}
 
     def _pre_load_data(self, input_dir: str | Path) -> tuple[list[Path], list[dict]]:
         input_dir = Path(input_dir)
         if not input_dir.is_relative_to(self.root_dir):
-            raise ValueError(f"Input directory or file {str(input_dir)} is not relative to root directory {str(self.root_dir)}")
+            raise ValueError(
+                f"Input directory or file {str(input_dir)} is not relative to root directory {str(self.root_dir)}"
+            )
         if input_dir.is_dir():
             pdfs_files = list(input_dir.rglob("*.pdf"))
         elif input_dir.is_file() and input_dir.suffix == ".pdf":

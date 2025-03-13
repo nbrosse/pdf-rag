@@ -20,10 +20,7 @@ class GeminiTransformComponent(TransformComponent):
         description="Google API key for Gemini",
         validate_default=True,
     )
-    model_name: str = Field(
-        default="gemini-2.0-flash",
-        description="Gemini model name to use"
-    )
+    model_name: str = Field(default="gemini-2.0-flash", description="Gemini model name to use")
 
     _model: GenerativeModel = PrivateAttr(default=None, init=False)
     _client: genai.Client = PrivateAttr(default=None, init=False)
@@ -46,22 +43,17 @@ class GeminiTransformComponent(TransformComponent):
     def __call__(self, nodes: Sequence[BaseNode], **kwargs: Any) -> Sequence[BaseNode]:
         """Transform nodes."""
 
-    async def acall(
-        self, nodes: Sequence[BaseNode], **kwargs: Any
-    ) -> Sequence[BaseNode]:
+    async def acall(self, nodes: Sequence[BaseNode], **kwargs: Any) -> Sequence[BaseNode]:
         """Async transform nodes."""
         return self.__call__(nodes, **kwargs)
 
 
 class ReformatMarkdownComponent(GeminiTransformComponent):
-
     max_iters: int = Field(
         default=50,
         description="Maximum number of iterations for reformatting markdown document.",
     )
-    in_place: bool = Field(
-        default=True, description="Whether to process nodes in place."
-    )
+    in_place: bool = Field(default=True, description="Whether to process nodes in place.")
     num_workers: int = Field(
         default=4,
         description="Number of workers to use for concurrent async processing.",
@@ -73,8 +65,6 @@ class ReformatMarkdownComponent(GeminiTransformComponent):
         node: BaseNode,
     ) -> BaseNode:
         format = node.metadata.get("format", "")
-        # if format != "portrait":
-        #     return node
         reformatted = node.metadata.get("is_reformatted", False)
         if reformatted:
             return node
@@ -95,18 +85,19 @@ class ReformatMarkdownComponent(GeminiTransformComponent):
                 response = ""
                 i = 0
                 while "<end>" not in response and i < self.max_iters:
-                    request = template.render(document=content, processed=transcription, landscape=(format == "landscape"))
-                    print(request)
+                    request = template.render(
+                        document=content, processed=transcription, landscape=(format == "landscape")
+                    )
                     response = await self._client.aio.models.generate_content(
                         contents=request,
                         model=self.model_name,
                     )
                     response = response.text
+                    response = postprocess_markdown_output(response)
                     transcription += response.replace("<end>", "")
                     i += 1
                 if i == self.max_iters:
                     raise RuntimeError("Maximum number of iterations reached.")
-                transcription = postprocess_markdown_output(transcription)
             node.set_content(transcription)
             node.metadata["is_reformatted"] = True
             if output_file and not output_file.exists():

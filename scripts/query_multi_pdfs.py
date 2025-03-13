@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,11 +9,6 @@ from pdf_rag.react_agent_multi_pdfs import ReActAgentMultiPdfs
 from dotenv import load_dotenv
 
 load_dotenv()
-
-logger = logging.getLogger("query_multi_pdfs")
-logging.basicConfig(level=logging.INFO)
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.ERROR)
 
 
 @dataclass
@@ -39,17 +33,23 @@ class ReActAgentConfig:
         self.api_key_gemini = self.api_key_gemini or os.environ.get("GEMINI_API_KEY")
         self.api_key_mistral = self.api_key_mistral or os.environ.get("MISTRAL_API_KEY")
         if not self.api_key_gemini:
-            raise ValueError("Gemini API Key is required. Provide api_key_gemini or set GEMINI_API_KEY environment variable.")
+            raise ValueError(
+                "Gemini API Key is required. Provide api_key_gemini or set GEMINI_API_KEY environment variable."
+            )
         if not self.api_key_mistral:
-            raise ValueError("Mistral API Key is required. Provide api_key_mistral or set MISTRAL_API_KEY environment variable.")
+            raise ValueError(
+                "Mistral API Key is required. Provide api_key_mistral or set MISTRAL_API_KEY environment variable."
+            )
 
 
 def load_and_validate_config(config_path: str) -> ReActAgentConfig:
     try:
         config = OmegaConf.load(config_path)
-        react_agent_config = OmegaConf.structured(ReActAgentConfig)(config)
-        logger.info("Configuration loaded and validated successfully:")
-        logger.info(react_agent_config)
+        react_agent_schema = OmegaConf.structured(ReActAgentConfig)  # (**config)
+        react_agent_config = OmegaConf.merge(react_agent_schema, config)
+        react_agent_config = ReActAgentConfig(**react_agent_config)
+        print("Configuration loaded and validated successfully:")
+        print(str(react_agent_config))
         return react_agent_config
     except ValidationError as e:
         raise ValidationError(f"Validation error: {e}")

@@ -59,8 +59,8 @@ class TreeNode:
 
 
 def parse_landscape_structure(document: BaseNode) -> TreeNode:
-    page_pattern = re.compile(r'^-\s*Page\s+(\d+)\s*:\s*(.+)$')
-    header_pattern = re.compile(r'^(#+)\s+(.+)$')
+    page_pattern = re.compile(r"^-\s*Page\s+(\d+)\s*:\s*(.+)$")
+    header_pattern = re.compile(r"^(#+)\s+(.+)$")
     format = document.metadata.get("format", "")
     if format != "landscape":
         raise ValueError(f"Unsupported format {format}")
@@ -99,9 +99,11 @@ def parse_landscape_structure(document: BaseNode) -> TreeNode:
             page_num = int(page_match.group(1))
             title = page_match.group(2).strip()
             if page_num in processed_page_numbers:
-                logger.warning(f"Page {page_num} already processed. Skipping {title}.")
+                logger.warning(f"Filename {filename} Page {page_num} already processed. Skipping {title}.")
             elif page_num > number_pages:
-                logger.warning(f"Page number {page_num} is greater than the number of pages in the document. Skipping {title}.")
+                logger.warning(
+                    f"Filename {filename} Page number {page_num} is greater than the number of pages in the document. Skipping {title}."
+                )
             else:
                 processed_page_numbers.add(page_num)
                 new_node = TreeNode(name=title, number=page_num)
@@ -112,7 +114,7 @@ def parse_landscape_structure(document: BaseNode) -> TreeNode:
 
     leftout_page_numbers = set(range(1, number_pages + 1)) - processed_page_numbers
     if leftout_page_numbers:
-        logger.warning(f"Page numbers {leftout_page_numbers} are not processed.")
+        logger.warning(f"Filename {filename} Page numbers {leftout_page_numbers} are not processed.")
         uncategorized_node = TreeNode(name="Uncategorized", number=abstract_node_number)
         abstract_node_number -= 1
         root.add_child(uncategorized_node)
@@ -126,7 +128,7 @@ def parse_landscape_structure(document: BaseNode) -> TreeNode:
 
 
 def parse_portrait_structure(document: BaseNode) -> TreeNode:
-    header_pattern = re.compile(r'(#+)\s+(.*?)\s+\[line\s+(\d+)\]')
+    header_pattern = re.compile(r"(#+)\s+(.*?)\s+\[line\s+(\d+)\]")
     format = document.metadata.get("format", "")
     if format != "portrait":
         raise ValueError(f"Unsupported format {format}")
@@ -160,7 +162,9 @@ def parse_portrait_structure(document: BaseNode) -> TreeNode:
             stack.append((new_node, level))
             continue
 
-    assert processed_line_numbers[0] == 0 and all(processed_line_numbers[i] <= processed_line_numbers[i+1] for i in range(len(processed_line_numbers) - 1))
+    assert processed_line_numbers[0] == 0 and all(
+        processed_line_numbers[i] <= processed_line_numbers[i + 1] for i in range(len(processed_line_numbers) - 1)
+    )
     return root
 
 

@@ -9,13 +9,12 @@ from pydantic import Field, PrivateAttr
 
 
 class MarkdownLineNodeParser(MarkdownNodeParser):
-
     @classmethod
     def from_defaults(
-            cls,
-            include_metadata: bool = True,
-            include_prev_next_rel: bool = True,
-            callback_manager: CallbackManager | None = None,
+        cls,
+        include_metadata: bool = True,
+        include_prev_next_rel: bool = True,
+        callback_manager: CallbackManager | None = None,
     ) -> "MarkdownLineNodeParser":
         callback_manager = callback_manager or CallbackManager([])
         return cls(
@@ -85,24 +84,21 @@ class MarkdownLineNodeParser(MarkdownNodeParser):
         return markdown_nodes
 
     def _build_node_from_split_with_line(
-            self,
-            text_split: str,
-            node: BaseNode,
-            header_path: str,
-            line_number: int,
+        self,
+        text_split: str,
+        node: BaseNode,
+        header_path: str,
+        line_number: int,
     ) -> TextNode:
         """Build node from single text split."""
         node = build_nodes_from_splits([text_split], node, id_func=self.id_func)[0]
         if self.include_metadata:
-            node.metadata["header_path"] = (
-                "/" + header_path + "/" if header_path else "/"
-            )
+            node.metadata["header_path"] = "/" + header_path + "/" if header_path else "/"
             node.metadata["line_number"] = line_number
         return node
 
 
 class MarkdownPageNodeParser(MarkdownNodeParser):
-
     chunk_size: int = Field(
         default=1024,
         description="The token chunk size for each chunk. 0 to deactivate.",
@@ -150,7 +146,11 @@ class MarkdownPageNodeParser(MarkdownNodeParser):
             pages.pop()
         assert len(page_numbers) == len(pages), f"Page numbers {len(page_numbers)} and pages {len(pages)} do not match"
         if self._sentence_splitter:
-            page_numbers_split_pages = [(page_number, split_page) for page_number, page in zip(page_numbers, pages) for split_page in self._sentence_splitter.split_text(page)]
+            page_numbers_split_pages = [
+                (page_number, split_page)
+                for page_number, page in zip(page_numbers, pages)
+                for split_page in self._sentence_splitter.split_text(page)
+            ]
         else:
             page_numbers_split_pages = list(zip(page_numbers, pages))
         markdown_nodes = [

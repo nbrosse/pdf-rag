@@ -33,9 +33,7 @@ api_key = os.getenv("GEMINI_API_KEY", None)
 if api_key is None:
     raise ValueError("The GEMINI_API_KEY key is required.")
 
-Settings.embed_model = GeminiEmbeddingUpdated(
-    model_name="models/text-embedding-004", api_key=api_key
-)
+Settings.embed_model = GeminiEmbeddingUpdated(model_name="models/text-embedding-004", api_key=api_key)
 Settings.llm = Gemini(model_name="models/gemini-2.0-flash", api_key=api_key)
 
 
@@ -61,9 +59,7 @@ class CustomObjectRetriever(ObjectRetriever):
 
         nodes = self._retriever.retrieve(query_bundle)
         for processor in self._node_postprocessors:
-            nodes = processor.postprocess_nodes(
-                nodes, query_bundle=query_bundle
-            )
+            nodes = processor.postprocess_nodes(nodes, query_bundle=query_bundle)
         tools = [self._object_node_mapping.from_node(n.node) for n in nodes]
 
         sub_question_engine = SubQuestionQueryEngine.from_defaults(
@@ -77,30 +73,26 @@ class CustomObjectRetriever(ObjectRetriever):
         """
         sub_question_tool = QueryEngineTool(
             query_engine=sub_question_engine,
-            metadata=ToolMetadata(
-                name="compare_tool",
-                description=sub_question_description
-            ),
+            metadata=ToolMetadata(name="compare_tool", description=sub_question_description),
         )
         retrieved_tools = tools + [sub_question_tool]
         return retrieved_tools
 
 
 class ReActAgentMultiPdfs:
-
     def __init__(
-            self,
-            api_key_gemini: str,
-            api_key_mistral: str,
-            root_dir: Path,
-            pdfs_dir: Path,
-            cache_dir: Path,
-            storage_dir: Path,
-            num_workers: int = 16,
-            chunks_top_k: int = 5,
-            nodes_top_k: int = 10,
-            max_iterations: int = 20,
-            verbose: bool = True,
+        self,
+        api_key_gemini: str,
+        api_key_mistral: str,
+        root_dir: Path,
+        pdfs_dir: Path,
+        cache_dir: Path,
+        storage_dir: Path,
+        num_workers: int = 16,
+        chunks_top_k: int = 5,
+        nodes_top_k: int = 10,
+        max_iterations: int = 20,
+        verbose: bool = True,
     ) -> None:
         self._root_dir = root_dir
         self._pdfs_dir = pdfs_dir
@@ -114,9 +106,9 @@ class ReActAgentMultiPdfs:
         self._pdf_reader = PDFDirectoryReader(
             api_key_gemini=api_key_gemini,
             api_key_mistral=api_key_mistral,
-            cache_dir=str(cache_dir),
+            cache_dir=cache_dir,
             num_workers=num_workers,
-            root_dir=str(root_dir),
+            root_dir=root_dir,
             show_progress=False,
         )
         self._markdown_parser = MarkdownPageNodeParser()
@@ -128,7 +120,7 @@ class ReActAgentMultiPdfs:
         relative_path = Path(pdf_file).relative_to(self._root_dir)
         storage_name = relative_path.name
         # Clean filename by replacing spaces and parentheses with underscores to ensure compatibility with LLM tool parsing
-        storage_name = re.sub(r'[()\s]', '_', storage_name)
+        storage_name = re.sub(r"[()\s]", "_", storage_name)
         pdf_file_stem_clean = Path(storage_name).stem
         #
         storage_name_vector = storage_name.replace(".pdf", "_vector")
@@ -145,10 +137,12 @@ class ReActAgentMultiPdfs:
         return pdf_file_stem_clean, vector_index_persist_path, summary_index_persist_path, summary_path
 
     def build_agent_per_doc(
-            self,
-            pdf_file: Path,
+        self,
+        pdf_file: Path,
     ) -> tuple[ReActAgent, str]:
-        pdf_file_stem_clean, vector_index_persist_path, summary_index_persist_path, summary_path = self._get_vector_summary_paths(pdf_file)
+        pdf_file_stem_clean, vector_index_persist_path, summary_index_persist_path, summary_path = (
+            self._get_vector_summary_paths(pdf_file)
+        )
         if vector_index_persist_path.exists() and summary_index_persist_path.exists():
             vector_index = load_index_from_storage(
                 StorageContext.from_defaults(persist_dir=str(vector_index_persist_path)),
@@ -165,16 +159,15 @@ class ReActAgentMultiPdfs:
             summary_index.storage_context.persist(persist_dir=str(summary_index_persist_path))
 
         # define query engines
-        vector_query_engine = vector_index.as_query_engine(similarity_top_k=self._chunks_top_k, node_postprocessors=[FullPagePostprocessor(docstore=vector_index.docstore)])
+        vector_query_engine = vector_index.as_query_engine(
+            similarity_top_k=self._chunks_top_k,
+            node_postprocessors=[FullPagePostprocessor(docstore=vector_index.docstore)],
+        )
         summary_query_engine = summary_index.as_query_engine(response_mode="tree_summarize")
 
         # extract a summary
         if not summary_path.exists():
-            summary = (
-                summary_query_engine.query(
-                    "Extract a summary of this document"
-                ).response
-            )
+            summary = summary_query_engine.query("Extract a summary of this document").response
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             summary_path.write_text(summary)
         else:
@@ -213,10 +206,12 @@ class ReActAgentMultiPdfs:
         return agent, summary
 
     async def abuild_agent_per_doc(
-            self,
-            pdf_file: Path,
+        self,
+        pdf_file: Path,
     ) -> tuple[ReActAgent, str]:
-        pdf_file_stem_clean, vector_index_persist_path, summary_index_persist_path, summary_path = self._get_vector_summary_paths(pdf_file)
+        pdf_file_stem_clean, vector_index_persist_path, summary_index_persist_path, summary_path = (
+            self._get_vector_summary_paths(pdf_file)
+        )
         if vector_index_persist_path.exists() and summary_index_persist_path.exists():
             vector_index = load_index_from_storage(
                 StorageContext.from_defaults(persist_dir=str(vector_index_persist_path)),
@@ -233,16 +228,15 @@ class ReActAgentMultiPdfs:
             summary_index.storage_context.persist(persist_dir=str(summary_index_persist_path))
 
         # define query engines
-        vector_query_engine = vector_index.as_query_engine(similarity_top_k=self._chunks_top_k, node_postprocessors=[FullPagePostprocessor(docstore=vector_index.docstore)])
+        vector_query_engine = vector_index.as_query_engine(
+            similarity_top_k=self._chunks_top_k,
+            node_postprocessors=[FullPagePostprocessor(docstore=vector_index.docstore)],
+        )
         summary_query_engine = summary_index.as_query_engine(response_mode="tree_summarize")
 
         # extract a summary
         if not summary_path.exists():
-            summary = (
-                await summary_query_engine.aquery(
-                    "Extract a summary of this document"
-                )
-            ).response
+            summary = (await summary_query_engine.aquery("Extract a summary of this document")).response
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             summary_path.write_text(summary)
         else:
@@ -302,7 +296,8 @@ class ReActAgentMultiPdfs:
         jobs = [
             self.abuild_agent_per_doc(
                 pdf_file=pdf_file,
-            ) for pdf_file in pdf_files
+            )
+            for pdf_file in pdf_files
         ]
 
         results = await run_jobs(

@@ -4,7 +4,6 @@ from google import genai
 
 
 class GeminiEmbeddingUpdated(BaseEmbedding):
-
     api_key: str | None = Field(
         default=None,
         description="API key to access the model. Defaults to None.",
@@ -12,10 +11,11 @@ class GeminiEmbeddingUpdated(BaseEmbedding):
 
     _client: genai.Client = PrivateAttr()
 
-    def __init__(self,
-                 api_key: str,
-                 model_name: str = "models/text-embedding-004",
-                 ):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "models/text-embedding-004",
+    ):
         super().__init__(
             api_key=api_key,
             model_name=model_name,

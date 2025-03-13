@@ -22,13 +22,10 @@ class GeminiBaseExtractor(BaseExtractor):
         validate_default=True,
     )
     temperature: float = Field(
-        default=1.0,
+        default=0.1,
         description="Temperature of gemini",
     )
-    model_name: str = Field(
-        default="gemini-2.0-flash",
-        description="Gemini model name to use"
-    )
+    model_name: str = Field(default="gemini-2.0-flash", description="Gemini model name to use")
 
     _client: genai.Client = PrivateAttr(default=None, init=False)
 
@@ -61,10 +58,9 @@ class GeminiBaseExtractor(BaseExtractor):
 
         """
         pass
-    
+
 
 class ContextExtractor(GeminiBaseExtractor):
-
     @classmethod
     def class_name(cls) -> str:
         """Get class name."""
@@ -75,13 +71,9 @@ class ContextExtractor(GeminiBaseExtractor):
         template = jinja2_env.get_template("extract_context.jinja2")
         request = template.render(document=context_str)
         context = await self._client.aio.models.generate_content(
-            contents=request,
-            model=self.model_name,
-            config=types.GenerateContentConfig(
-                temperature=self.temperature
-            )
+            contents=request, model=self.model_name, config=types.GenerateContentConfig(temperature=self.temperature)
         )
-        pattern = r'```json\n(.*?)```'
+        pattern = r"```json\n(.*?)```"
         match = re.search(pattern, context.text, re.DOTALL)
         if match:
             json_content = match.group(1).strip()
@@ -92,14 +84,11 @@ class ContextExtractor(GeminiBaseExtractor):
 
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict[str, Any]]:
         jobs = [self._aextract_context_from_node(node) for node in nodes]
-        contexts = await run_jobs(
-            jobs, show_progress=self.show_progress, workers=self.num_workers
-        )
+        contexts = await run_jobs(jobs, show_progress=self.show_progress, workers=self.num_workers)
         return contexts
 
 
 class TableOfContentsExtractor(GeminiBaseExtractor):
-
     head_pages: int = Field(
         default=10,
         description="Number of head pages considered for extracting table of contents.",
@@ -118,11 +107,7 @@ class TableOfContentsExtractor(GeminiBaseExtractor):
         template = jinja2_env.get_template("extract_toc.jinja2")
         request = template.render(doc=context_str, format=format)
         toc = await self._client.aio.models.generate_content(
-            contents=request,
-            model=self.model_name,
-            config=types.GenerateContentConfig(
-                temperature=self.temperature
-            )
+            contents=request, model=self.model_name, config=types.GenerateContentConfig(temperature=self.temperature)
         )
         response = toc.text.strip()
         if response == "<none>":
@@ -131,14 +116,11 @@ class TableOfContentsExtractor(GeminiBaseExtractor):
 
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict[str, str]]:
         jobs = [self._aextract_toc_from_node(node) for node in nodes]
-        tocs: list[str] = await run_jobs(
-            jobs, show_progress=self.show_progress, workers=self.num_workers
-        )
+        tocs: list[str] = await run_jobs(jobs, show_progress=self.show_progress, workers=self.num_workers)
         return [{"extracted_toc": toc} for toc in tocs]
 
 
 class TableOfContentsCreator(GeminiBaseExtractor):
-
     @classmethod
     def class_name(cls) -> str:
         """Get class name."""
@@ -186,18 +168,14 @@ class TableOfContentsCreator(GeminiBaseExtractor):
             draft_toc = await self._client.aio.models.generate_content(
                 contents=request,
                 model=self.model_name,
-                config=types.GenerateContentConfig(
-                    temperature=self.temperature
-                )
+                config=types.GenerateContentConfig(temperature=self.temperature),
             )
             draft_toc = draft_toc.text.strip()
             request = template_check.render(toc=draft_toc)
             toc = await self._client.aio.models.generate_content(
                 contents=request,
                 model=self.model_name,
-                config=types.GenerateContentConfig(
-                    temperature=self.temperature
-                )
+                config=types.GenerateContentConfig(temperature=self.temperature),
             )
             toc = toc.text.strip()
         else:
@@ -206,14 +184,11 @@ class TableOfContentsCreator(GeminiBaseExtractor):
 
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict[str, str]]:
         jobs = [self._aextract_toc_from_node(node) for node in nodes]
-        tocs: list[str] = await run_jobs(
-            jobs, show_progress=self.show_progress, workers=self.num_workers
-        )
+        tocs: list[str] = await run_jobs(jobs, show_progress=self.show_progress, workers=self.num_workers)
         return [{"created_toc": toc} for toc in tocs]
 
 
 class LandscapePagesExtractor(GeminiBaseExtractor):
-
     @classmethod
     def class_name(cls) -> str:
         """Get class name."""
@@ -232,25 +207,18 @@ class LandscapePagesExtractor(GeminiBaseExtractor):
         template = jinja2_env.get_template("extract_landscape_pages.jinja2")
         request = template.render(doc=context_str, toc=toc)
         pages = await self._client.aio.models.generate_content(
-            contents=request,
-            model=self.model_name,
-            config=types.GenerateContentConfig(
-                temperature=self.temperature
-            )
+            contents=request, model=self.model_name, config=types.GenerateContentConfig(temperature=self.temperature)
         )
         response = pages.text
         return response
 
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict[str, str]]:
         jobs = [self._aextract_pages_from_node(node) for node in nodes]
-        list_pages: list[str] = await run_jobs(
-            jobs, show_progress=self.show_progress, workers=self.num_workers
-        )
+        list_pages: list[str] = await run_jobs(jobs, show_progress=self.show_progress, workers=self.num_workers)
         return [{"pages": pages} for pages in list_pages]
 
 
 class StructureExtractor(GeminiBaseExtractor):
-
     @classmethod
     def class_name(cls) -> str:
         """Get class name."""
@@ -278,9 +246,7 @@ class StructureExtractor(GeminiBaseExtractor):
             structure = await self._client.aio.models.generate_content(
                 contents=request,
                 model=self.model_name,
-                config=types.GenerateContentConfig(
-                    temperature=self.temperature
-                )
+                config=types.GenerateContentConfig(temperature=self.temperature),
             )
             response = structure.text.strip()
             return response
@@ -289,7 +255,5 @@ class StructureExtractor(GeminiBaseExtractor):
 
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict[str, str]]:
         jobs = [self._aextract_structure_from_node(node) for node in nodes]
-        structures: list[str] = await run_jobs(
-            jobs, show_progress=self.show_progress, workers=self.num_workers
-        )
+        structures: list[str] = await run_jobs(jobs, show_progress=self.show_progress, workers=self.num_workers)
         return [{"structure": structure} for structure in structures]

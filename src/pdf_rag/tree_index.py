@@ -31,12 +31,9 @@ class Neo4jConfig:
 
 class TreeNeo4jExporter:
     def __init__(self, config: Neo4jConfig):
-        self.driver = GraphDatabase.driver(
-            config.uri, 
-            auth=(config.username, config.password)
-        )
+        self.driver = GraphDatabase.driver(config.uri, auth=(config.username, config.password))
         self.database = config.database
-        
+
     def close(self):
         self.driver.close()
 
@@ -50,20 +47,30 @@ class TreeNeo4jExporter:
 
     def create_node(self, node_id: str, content: str, metadata: str, name: str):
         with self.driver.session(database=self.database) as session:
-            session.run("""
+            session.run(
+                """
                 MERGE (n:TreeNode {node_id: $node_id})
                 SET n.content = $content,
                     n.metadata = $metadata,
                     n.name = $name
-            """, node_id=node_id, content=content, metadata=metadata, name=name)
+            """,
+                node_id=node_id,
+                content=content,
+                metadata=metadata,
+                name=name,
+            )
 
     def create_relationship(self, parent_id: str, child_id: str):
         with self.driver.session(database=self.database) as session:
-            session.run("""
+            session.run(
+                """
                 MATCH (parent:TreeNode {node_id: $parent_id})
                 MATCH (child:TreeNode {node_id: $child_id})
                 MERGE (parent)-[:HAS_CHILD]->(child)
-            """, parent_id=parent_id, child_id=child_id)
+            """,
+                parent_id=parent_id,
+                child_id=child_id,
+            )
 
     def clear_database(self):
         with self.driver.session(database=self.database) as session:
@@ -159,7 +166,6 @@ class IndexStructTree(IndexStruct):
 
 
 class TreeIndex(BaseIndex[IndexStructTree]):
-
     index_struct_cls = IndexStructTree
 
     def __init__(
@@ -200,14 +206,14 @@ class TreeIndex(BaseIndex[IndexStructTree]):
     def export_to_neo4j(self, config: Optional[Neo4jConfig] = None) -> None:
         if config is None:
             config = Neo4jConfig()
-            
+
         exporter = TreeNeo4jExporter(config)
-        
+
         try:
             # Clear existing data and create constraints
             exporter.clear_database()
             exporter.create_constraints()
-            
+
             # Create all nodes first
             for node_id in self.index_struct.all_nodes:
                 node = self.docstore.get_node(node_id)
@@ -215,18 +221,16 @@ class TreeIndex(BaseIndex[IndexStructTree]):
                 metadata = node.get_metadata_str() or ""
                 name = node.metadata["filename"]
                 exporter.create_node(node_id, content, metadata, name)
-            
+
             # Create relationships
             for parent_id, children_ids in self.index_struct.node_to_children.items():
                 for child_id in children_ids:
                     exporter.create_relationship(parent_id, child_id)
-                    
+
         finally:
             exporter.close()
 
-    def _build_index_from_nodes(
-        self, nodes: Sequence[BaseNode], **build_kwargs: Any
-    ) -> IndexStructTree:
+    def _build_index_from_nodes(self, nodes: Sequence[BaseNode], **build_kwargs: Any) -> IndexStructTree:
         self._index_struct = IndexStructTree()
         self._insert(nodes=nodes, **build_kwargs)
         return self.index_struct
@@ -238,9 +242,15 @@ class TreeIndex(BaseIndex[IndexStructTree]):
         for root_id, ref_doc_info in all_ref_doc_info.items():
             format = ref_doc_info.metadata.get("format", "")
             if format == "landscape":
-                number_to_node_id = {self.docstore.get_node(node_id).metadata["page_number"]: node_id for node_id in ref_doc_info.node_ids}
+                number_to_node_id = {
+                    self.docstore.get_node(node_id).metadata["page_number"]: node_id
+                    for node_id in ref_doc_info.node_ids
+                }
             elif format == "portrait":
-                number_to_node_id = {self.docstore.get_node(node_id).metadata["line_number"]: node_id for node_id in ref_doc_info.node_ids}
+                number_to_node_id = {
+                    self.docstore.get_node(node_id).metadata["line_number"]: node_id
+                    for node_id in ref_doc_info.node_ids
+                }
             else:
                 raise ValueError(f"Unknown format: {format}")
             number_to_node_id[DOCUMENT_NODE_NUMBER] = root_id
@@ -262,7 +272,9 @@ class TreeIndex(BaseIndex[IndexStructTree]):
                     )
                     abstract_nodes[tree_node.number] = new_node
                 elif tree_node.number not in number_to_node_id:
-                    raise ValueError(f"Tree node number {tree_node.number} is not in the index nodes. A node is missing.")
+                    raise ValueError(
+                        f"Tree node number {tree_node.number} is not in the index nodes. A node is missing."
+                    )
             #
             self.docstore.add_documents(list(abstract_nodes.values()))
             number_to_node_id.update({number: node.node_id for number, node in abstract_nodes.items()})
@@ -318,9 +330,7 @@ class TreeIndex(BaseIndex[IndexStructTree]):
 
         self._storage_context.index_store.add_index_struct(self._index_struct)
 
-    def delete_ref_doc(
-        self, ref_doc_id: str, delete_from_docstore: bool = False, **delete_kwargs: Any
-    ) -> None:
+    def delete_ref_doc(self, ref_doc_id: str, delete_from_docstore: bool = False, **delete_kwargs: Any) -> None:
         """Delete a document and it's nodes by using ref_doc_id."""
         ref_doc_info = self.docstore.get_ref_doc_info(ref_doc_id)
         if ref_doc_info is None:

@@ -18,7 +18,7 @@ class FullPagePostprocessor(BaseNodePostprocessor):
             for node_id in ref_doc_info.node_ids:
                 try:
                     node = self.docstore.get_node(node_id)
-                    page_number = node.metadata['page_number']
+                    page_number = node.metadata["page_number"]
                 except KeyError:
                     raise KeyError(f"Node id {node_id} has no page_number metadata")
                 doc_page_node_ids[(doc_id, page_number)].append(node_id)
@@ -37,7 +37,7 @@ class FullPagePostprocessor(BaseNodePostprocessor):
         page_nodes_scores: list[NodeWithScore] = list()
         for node in nodes:
             try:
-                page_number = node.metadata['page_number']
+                page_number = node.metadata["page_number"]
             except KeyError:
                 raise KeyError(f"Node id {node.node_id} has no page_number metadata")
             doc_id = node.node.source_node.node_id

@@ -1,4 +1,3 @@
-import logging
 import os
 import argparse
 import shutil
@@ -9,8 +8,13 @@ from llama_index.core.ingestion import IngestionPipeline, DocstoreStrategy
 from llama_index.core.storage.docstore import SimpleDocumentStore
 from omegaconf import OmegaConf, ValidationError
 
-from pdf_rag.extractors import ContextExtractor, TableOfContentsExtractor, TableOfContentsCreator, \
-    LandscapePagesExtractor, StructureExtractor
+from pdf_rag.extractors import (
+    ContextExtractor,
+    TableOfContentsExtractor,
+    TableOfContentsCreator,
+    LandscapePagesExtractor,
+    StructureExtractor,
+)
 from pdf_rag.markdown_parsers import MarkdownLineNodeParser, MarkdownPageNodeParser
 from pdf_rag.readers import PDFDirectoryReader
 
@@ -20,13 +24,6 @@ from pdf_rag.transforms import ReformatMarkdownComponent
 from pdf_rag.tree_index import TreeIndex, Neo4jConfig
 
 load_dotenv()
-
-logger = logging.getLogger("metadata_structure")
-logging.basicConfig(level=logging.INFO)
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.ERROR)
-neo4j_logger = logging.getLogger('neo4j')
-neo4j_logger.setLevel(logging.ERROR)
 
 
 @dataclass
@@ -58,9 +55,13 @@ class PipelineConfig:
         self.api_key_gemini = self.api_key_gemini or os.environ.get("GEMINI_API_KEY")
         self.api_key_mistral = self.api_key_mistral or os.environ.get("MISTRAL_API_KEY")
         if not self.api_key_gemini:
-            raise ValueError("Gemini API Key is required. Provide api_key_gemini or set GEMINI_API_KEY environment variable.")
+            raise ValueError(
+                "Gemini API Key is required. Provide api_key_gemini or set GEMINI_API_KEY environment variable."
+            )
         if not self.api_key_mistral:
-            raise ValueError("Mistral API Key is required. Provide api_key_mistral or set MISTRAL_API_KEY environment variable.")
+            raise ValueError(
+                "Mistral API Key is required. Provide api_key_mistral or set MISTRAL_API_KEY environment variable."
+            )
 
         self.root_dir = self.data_dir / "pdfs"
         self.pdfs_dir = self.data_dir / "pdfs"
@@ -68,7 +69,7 @@ class PipelineConfig:
         self.storage_dir = self.data_dir / "storage_metadata"
 
         if self.erase and self.storage_dir.exists():
-            logger.info(f"Removed existing storage directory: {self.storage_dir}")
+            print(f"Removed existing storage directory: {self.storage_dir}")
             shutil.rmtree(self.storage_dir, ignore_errors=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -79,9 +80,11 @@ class PipelineConfig:
 def load_and_validate_config(config_path: str) -> PipelineConfig:
     try:
         config = OmegaConf.load(config_path)
-        pipeline_config = OmegaConf.structured(PipelineConfig)(config)
-        logger.info("Configuration loaded and validated successfully:")
-        logger.info(pipeline_config)
+        pipeline_schema = OmegaConf.structured(PipelineConfig)
+        pipeline_config = OmegaConf.merge(pipeline_schema, config)
+        pipeline_config = PipelineConfig(**pipeline_config)
+        print("Configuration loaded and validated successfully:")
+        print(str(pipeline_config))
         return pipeline_config
     except ValidationError as e:
         raise ValidationError(f"Validation error: {e}")
@@ -95,8 +98,8 @@ def ingestion_pipeline(config: PipelineConfig) -> None:
     pdf_reader = PDFDirectoryReader(
         api_key_gemini=config.api_key_gemini,
         api_key_mistral=config.api_key_mistral,
-        root_dir=str(config.pdfs_dir),
-        cache_dir=str(config.cache_dir),
+        root_dir=config.pdfs_dir,
+        cache_dir=config.cache_dir,
         num_workers=config.num_workers,
         show_progress=True,
     )
@@ -106,30 +109,48 @@ def ingestion_pipeline(config: PipelineConfig) -> None:
 
     pipeline = IngestionPipeline(
         transformations=[
-            ReformatMarkdownComponent(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
-            ContextExtractor(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
-            TableOfContentsExtractor(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
-            TableOfContentsCreator(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
-            LandscapePagesExtractor(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
-            StructureExtractor(api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers),
+            ReformatMarkdownComponent(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
+            ContextExtractor(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
+            TableOfContentsExtractor(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
+            TableOfContentsCreator(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
+            LandscapePagesExtractor(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
+            StructureExtractor(
+                api_key=config.api_key_gemini, model_name="gemini-2.0-flash", num_workers=config.num_workers
+            ),
         ],
         docstore=SimpleDocumentStore(),
         docstore_strategy=DocstoreStrategy.DUPLICATES_ONLY,
     )
 
     pipeline_storage_path = config.storage_dir / "pipeline_storage"
+    processed_docstore_path = config.storage_dir / "processed_docstore_storage.json"
     if pipeline_storage_path.exists():
-        logger.info(f"Loading existing pipeline storage from: {str(pipeline_storage_path)}")
+        print(f"Loading existing pipeline storage from: {str(pipeline_storage_path)}")
         pipeline.load(str(pipeline_storage_path))
+    if processed_docstore_path.exists():
+        print(f"Loading existing processed docstore from: {str(processed_docstore_path)}")
+        processed_docstore = SimpleDocumentStore.from_persist_path(str(processed_docstore_path))
+        print(f"Number of processed docs before ingestion: {len(processed_docstore.docs)}")
 
     nodes = pipeline.run(documents=documents, show_progress=True)
     pipeline.persist(str(config.storage_dir / "pipeline_storage"))
 
-    processed_docstore.add_documents(docs=nodes)
-    logger.info(f"Number of docs after ingestion: {len(processed_docstore.docs)}")
-    processed_docstore.persist(str(config.storage_dir / "processed_docstore_storage.json"))
+    if nodes:
+        processed_docstore.add_documents(docs=nodes)
+        print(f"Number of processed docs after ingestion: {len(processed_docstore.docs)}")
+        processed_docstore.persist(str(config.storage_dir / "processed_docstore_storage.json"))
 
-    logger.info("Ingestion pipeline completed and persisted.")
+    print("Ingestion pipeline completed and persisted.")
 
 
 def create_tree_index(config: PipelineConfig) -> None:
@@ -158,10 +179,10 @@ def create_tree_index(config: PipelineConfig) -> None:
 
     list_nodes.extend(list(docstore.docs.values()))
     tree_index = TreeIndex(nodes=list_nodes)
-    logger.info("Tree index created.")
+    print("Tree index created.")
 
     if config.neo4j_config:
-        logger.info("Exporting to Neo4j")
+        print("Exporting to Neo4j")
         tree_index.export_to_neo4j(config.neo4j_config)
 
 
