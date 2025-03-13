@@ -1,0 +1,28 @@
+<doc>
+{{ doc }}
+</doc>
+
+Generate a hierarchical table of contents for the slides deck above by:
+
+1. IDENTIFY SECTION BREAKS
+- Section breaks are marked by "--- end page {n}" where n is the page number
+
+2. EXTRACT SECTION INFO
+- Get the title text from each section break page
+- Record the corresponding page number
+- Validate that page numbers are unique and ascending
+
+3. FORMAT OUTPUT
+Format each entry as:
+# {Section Title} (Page {n})
+
+Example output:
+# Introduction (Page 1)
+# Key Concepts (Page 5)
+# Implementation (Page 12)
+
+Requirements:
+- Page numbers must be unique and sequential
+- Ignore any formatting in the section titles
+
+The TOC should help readers quickly navigate the main sections of the deck.
