@@ -1,10 +1,7 @@
 import logging
-import os
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Sequence, Any, Optional, Iterator
-
-from google import genai
 
 from llama_index.core import IndexStructType
 from llama_index.core.base.base_retriever import BaseRetriever
